@@ -212,7 +212,6 @@ function HomePage({ day, plan, log, targets, updateLog, pct, completed }: BasePa
 }
 
 function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
-  const [tick, setTick] = useState(0)
   const workoutSession = log.workoutSession || createWorkoutSession(plan.items, state || {})
 
   useEffect(() => {
@@ -220,15 +219,6 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
       updateLog({ workoutSession })
     }
   }, [log.workoutSession, plan.items, updateLog, workoutSession])
-
-  useEffect(() => {
-    if (workoutSession.phase === 'finished' || workoutSession.phase === 'rest') {
-      return undefined
-    }
-
-    const timer = window.setInterval(() => setTick((value) => value + 1), 1000)
-    return () => window.clearInterval(timer)
-  }, [workoutSession.phase])
 
   useEffect(() => {
     if (workoutSession.phase !== 'rest' || workoutSession.restSecondsLeft <= 0) {
@@ -249,7 +239,6 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
   }, [updateLog, workoutSession])
 
   const activeExercise = workoutSession.exercises[workoutSession.activeExerciseIndex]
-  const workoutDuration = Math.max(0, Math.round((Date.now() - Date.parse(workoutSession.startedAt)) / 1000))
   const progress = getWorkoutProgress(workoutSession)
 
   const updateWorkoutSession = (updater: (session: WorkoutSessionState) => WorkoutSessionState) => {
@@ -334,7 +323,7 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
           <ProgressBar value={100} />
         </Card>
         <WorkoutFinishScreen
-          durationMinutes={formatDuration(workoutDuration)}
+          durationMinutes="Add time at the end"
           completedExercises={workoutSession.exercises.filter((exercise) => exercise.completed).length}
           completedSets={workoutSession.exercises.reduce((total, exercise) => total + exercise.completedSets, 0)}
           onRestart={() => updateLog({ workoutSession: createWorkoutSession(plan.items, state || {}) })}
@@ -355,13 +344,12 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
         </div>
         <div className="workout-meta-row">
           <div>
-            <span className="subtle">Workout timer</span>
-            <strong>{formatDuration(workoutDuration)}</strong>
-          </div>
-          <div>
             <span className="subtle">Progress</span>
             <strong>{progress}%</strong>
           </div>
+          <button className="coach-secondary" onClick={() => updateLog({ workoutSession: createWorkoutSession(plan.items, state || {}) })}>
+            Reset exercises
+          </button>
         </div>
         <ProgressBar value={progress} />
       </Card>
