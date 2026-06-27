@@ -24,14 +24,30 @@ function normalizeLog(logData = {}) {
     lifts: Array.isArray(logData.lifts) ? logData.lifts : []
   }
 }
+const throwingPlan = [
+  'Catch',
+  'Long Toss',
+  'Pull Downs',
+  'Ground Balls',
+  'Double Plays',
+  'Backhands',
+  'Short Hops',
+  'Arm Care'
+]
 const defaultWeeklyPlan = Object.fromEntries(Object.entries(weekPlan).map(([day, plan]) => [day, plan.items.join('\n')]))
+const planDefaults = {
+  ...defaultWeeklyPlan,
+  Monday: [defaultWeeklyPlan.Monday, throwingPlan.join('\n')].filter(Boolean).join('\n\nThrowing:\n'),
+  Wednesday: [defaultWeeklyPlan.Wednesday, throwingPlan.join('\n')].filter(Boolean).join('\n\nThrowing:\n'),
+  Thursday: [defaultWeeklyPlan.Thursday, throwingPlan.join('\n')].filter(Boolean).join('\n\nThrowing:\n')
+}
 
 function App() {
   const [tab, setTab] = useState('Home')
   const [state, setState] = useState(loadState)
   const dateId = todayId()
   const day = todayName()
-  const weeklyPlan = state.weekPlan || defaultWeeklyPlan
+  const weeklyPlan = state.weekPlan || planDefaults
   const currentPlanText = weeklyPlan[day] || weekPlan[day].items.join('\n')
   const planItems = currentPlanText.split('\n').map(item => item.trim()).filter(Boolean)
   const plan = { ...weekPlan[day], items: planItems.length ? planItems : weekPlan[day].items }
@@ -90,7 +106,7 @@ function WorkoutRow({ item, log, updateLog }) {
 function LiftRow({ lift, index, log, updateLog }) {
   const updateLift = (patch) => updateLog({ lifts: log.lifts.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) })
   const removeLift = () => updateLog({ lifts: log.lifts.filter((_, itemIndex) => itemIndex !== index) })
-  return <div className="lift-row"><div className="lift-fields"><input value={lift.exercise || ''} onChange={e=>updateLift({ exercise: e.target.value })} placeholder="Exercise" /><input value={lift.sets || ''} onChange={e=>updateLift({ sets: e.target.value })} placeholder="Sets" /><input value={lift.reps || ''} onChange={e=>updateLift({ reps: e.target.value })} placeholder="Reps" /><input value={lift.weight || ''} onChange={e=>updateLift({ weight: e.target.value })} placeholder="Weight" /></div><textarea value={lift.notes || ''} onChange={e=>updateLift({ notes: e.target.value })} placeholder="How it felt / notes" /><button className="text-button" onClick={removeLift}>Remove</button></div>
+  return <div className="lift-row"><div className="lift-fields"><label className="field-label"><span>Exercise</span><input value={lift.exercise || ''} onChange={e=>updateLift({ exercise: e.target.value })} placeholder="Exercise" /></label><label className="field-label"><span>Sets</span><input value={lift.sets || ''} onChange={e=>updateLift({ sets: e.target.value })} placeholder="3" /></label><label className="field-label"><span>Reps</span><input value={lift.reps || ''} onChange={e=>updateLift({ reps: e.target.value })} placeholder="5" /></label><label className="field-label"><span>Weight</span><input value={lift.weight || ''} onChange={e=>updateLift({ weight: e.target.value })} placeholder="135" /></label></div><textarea value={lift.notes || ''} onChange={e=>updateLift({ notes: e.target.value })} placeholder="How it felt / notes" /><button className="text-button" onClick={removeLift}>Remove</button></div>
 }
 function MacroMini({log, targets, updateLog}) { return <Card><h3>Nutrition</h3><Macro name="Protein" unit="g" value={log.macros.protein} target={targets.protein} add={25} log={log} updateLog={updateLog}/><Macro name="Carbs" unit="g" value={log.macros.carbs} target={targets.carbs} add={50} log={log} updateLog={updateLog}/><Macro name="Fat" unit="g" value={log.macros.fat} target={targets.fat} add={15} log={log} updateLog={updateLog}/></Card> }
 function NutritionPage(props) { return <div className="stack"><MacroMini {...props}/><Card><h3>Quick Add</h3><div className="grid"><Quick label="Shake" p={25} c={5} f={2} {...props}/><Quick label="Chicken + Rice" p={45} c={80} f={12} {...props}/><Quick label="Greek Yogurt" p={25} c={15} f={0} {...props}/><Quick label="Snack" p={10} c={35} f={8} {...props}/></div></Card></div> }
