@@ -1,23 +1,17 @@
-# AthleteOS Foundation
+# AthleteOS React
 
-Mobile-first React/Vite app for my offseason training.
-
-## Features
-- Today dashboard
-- Coach Mode workout flow
-- Workout checklist
-- Throwing checklist
-- Nutrition quick tracking
-- Recovery logging
-- Daily notes
-- Saved local history
-- Weight trend chart
+Mobile-first React/Vite app for offseason baseball training.
 
 ## Run locally
+
 ```bash
 npm install
 npm run dev
 ```
 
-## Current storage
-This version uses browser localStorage. It saves on the current device/browser only. Supabase login + cloud sync should be the next major backend upgrade.
+## Deploy to Vercel
+
+- Framework: Vite
+- Build command: `npm run build`
+- Output directory: `dist`
+- Root directory: blank if these files are at the repo root

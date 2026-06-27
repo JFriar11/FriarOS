@@ -1,18 +1,80 @@
-import React,{useEffect,useMemo,useState}from'react';import{createRoot}from'react-dom/client';import{Home,Dumbbell,Utensils,Activity,History,Check,ChevronRight,RotateCcw,Save}from'lucide-react';import{LineChart,Line,XAxis,YAxis,Tooltip,ResponsiveContainer}from'recharts';import'./styles.css';
-const todayKey=()=>new Date().toISOString().slice(0,10);const dayName=()=>new Date().toLocaleDateString(undefined,{weekday:'long'});const niceDate=()=>new Date().toLocaleDateString(undefined,{month:'long',day:'numeric'});
-const defaultProgram={Monday:{focus:'Sprint Day 1 — Max Velocity',type:'speed',items:['Blue sprint warm-up','Lunge & Reach','Microskips','Ladder Landings','Icky Bounds','Fly Ins','Cooldown walk + stretch'],throwing:['60–90 ft catch','40–50 easy throws']},Tuesday:{focus:'Recovery',type:'recovery',items:['20–30 min easy walk','Hip/hamstring/ankle mobility','T-spine mobility','Light catch only if needed'],throwing:['Optional light catch']},Wednesday:{focus:'Sprint Day 2 — Conditioning',type:'conditioning',items:['Blue sprint warm-up','Pacers / intervals from current week','Leg circuit','Spiderman flow','Cooldown walk + stretch'],throwing:['90–120 ft catch','Easy intent']},Thursday:{focus:'Recovery / Throwing',type:'recovery',items:['Mobility 15–20 min','Easy walk','Arm care'],throwing:['Long toss progression','Pull-downs on return']},Friday:{focus:'Upper Body Gym',type:'lift',items:['Fober shoulder prep','DB Complex 1','Bench variation','Incline press','Overhead press','Horizontal row','Pull-up / pulldown','Around-the-world pushups'],throwing:['Optional short catch']},Saturday:{focus:'Lower Body Power Gym',type:'lift',items:['Lunge & Reach','DB Complex 2','Step-ups','Single-leg RDL','Goblet lateral squat','Diagonal split squat','Single-leg squat to box'],throwing:['Short catch 30–40 throws']},Sunday:{focus:'Sprint Day 3 + Mixed Gym',type:'mixed',items:['Lunge & Reach','Garcias','Baseball sprint accelerations','Squatgatta circuit','Pull-up / push-up superset','Cooldown'],throwing:['Infield work','Ground balls','Game-speed throws']}};
-const defaultTargets={protein:190,carbs:325,fat:70,water:4};
-function load(){return JSON.parse(localStorage.getItem('athleteos-data')||'{}')}function save(d){localStorage.setItem('athleteos-data',JSON.stringify(d))}function getLog(data,date=todayKey()){return data[date]||{checks:{},throwing:{},nutrition:{protein:0,carbs:0,fat:0,water:0},recovery:{sleep:'',weight:'',whoop:'',soreness:3,mood:'good'},notes:''}}
-function App(){const[data,setData]=useState(load);const[tab,setTab]=useState('home');const date=todayKey();const log=getLog(data,date);useEffect(()=>save(data),[data]);const updateLog=(patch)=>setData(d=>({...d,[date]:{...getLog(d,date),...patch}}));const program=defaultProgram[dayName()]||defaultProgram.Monday;const completed=program.items.filter(x=>log.checks[x]).length;const total=program.items.length;return <div className="app"><div className="top"><div><div className="brand">AthleteOS</div><div className="date">{dayName()}, {niceDate()}</div></div><div className="pill">V1 Foundation</div></div>{tab==='home'&&<Dashboard program={program} log={log} updateLog={updateLog} completed={completed} total={total} setTab={setTab}/>} {tab==='workout'&&<Workout program={program} log={log} updateLog={updateLog}/>} {tab==='nutrition'&&<Nutrition log={log} updateLog={updateLog}/>} {tab==='recovery'&&<Recovery log={log} updateLog={updateLog}/>} {tab==='history'&&<HistoryPage data={data}/>}<Nav tab={tab} setTab={setTab}/></div>}
-function Dashboard({program,log,updateLog,completed,total,setTab}){const pct=Math.round(completed/Math.max(total,1)*100);return <><div className="card hero"><div className="row"><div><div className="muted small">Today&apos;s Focus</div><div className="big">{program.focus}</div></div><div className="pill">{pct}%</div></div><button className="btn full" onClick={()=>setTab('workout')}>Start Workout <ChevronRight size={16}/></button></div><div className="grid"><Metric title="Recovery" value={log.recovery.whoop?log.recovery.whoop+'%':'—'} sub="manual"/><Metric title="Sleep" value={log.recovery.sleep||'—'} sub="hours"/><Metric title="Weight" value={log.recovery.weight||'—'} sub="lbs"/><Metric title="Soreness" value={log.recovery.soreness+'/10'} sub="legs/body"/></div><Checklist title="Workout Checklist" items={program.items} values={log.checks} onToggle={(item)=>updateLog({checks:{...log.checks,[item]:!log.checks[item]}})}/><Checklist title="Throwing" items={program.throwing} values={log.throwing} onToggle={(item)=>updateLog({throwing:{...log.throwing,[item]:!log.throwing[item]}})}/><MacroBars nutrition={log.nutrition}/><Notes log={log} updateLog={updateLog}/></>}
-function Metric({title,value,sub}){return <div className="card"><div className="muted small">{title}</div><div className="title">{value}</div><div className="muted small">{sub}</div></div>}
-function Checklist({title,items,values,onToggle}){return <div className="card"><div className="title">{title}</div>{items.map(item=><div key={item} onClick={()=>onToggle(item)} className={'check '+(values[item]?'done':'')}><div className="box">{values[item]&&<Check size={16}/>}</div><span>{item}</span></div>)}</div>}
-function Workout({program,log,updateLog}){const[idx,setIdx]=useState(0);const[seconds,setSeconds]=useState(0);const item=program.items[idx];useEffect(()=>{if(!seconds)return;const t=setTimeout(()=>setSeconds(seconds-1),1000);return()=>clearTimeout(t)},[seconds]);return <><div className="card center"><div className="muted small">Coach Mode</div><div className="exercise">{item||'Workout Complete'}</div>{item?<><div className="muted">Step {idx+1} of {program.items.length}</div><button className="btn full" onClick={()=>{updateLog({checks:{...log.checks,[item]:true}});setIdx(Math.min(idx+1,program.items.length))}}>Done</button><div className="grid"><button className="btn secondary" onClick={()=>setSeconds(45)}>45s Rest</button><button className="btn secondary" onClick={()=>setSeconds(90)}>90s Rest</button></div></>:<><div className="big">Nice work.</div><button className="btn secondary full" onClick={()=>setIdx(0)}>Restart</button></>}{seconds>0&&<div className="timer">{seconds}</div>}</div><Checklist title="Full Workout" items={program.items} values={log.checks} onToggle={(item)=>updateLog({checks:{...log.checks,[item]:!log.checks[item]}})}/></>}
-function Nutrition({log,updateLog}){const n=log.nutrition;const add=(k,v)=>updateLog({nutrition:{...n,[k]:Math.max(0,(Number(n[k])||0)+v)}});return <div className="card"><div className="title">Nutrition Quick Track</div><Macro name="Protein" val={n.protein} goal={defaultTargets.protein} unit="g"/><div className="quick"><button onClick={()=>add('protein',25)}>+25g Shake</button><button onClick={()=>add('protein',40)}>+40g Meal</button><button onClick={()=>add('protein',-25)}>-25g</button></div><Macro name="Carbs" val={n.carbs} goal={defaultTargets.carbs} unit="g"/><div className="quick"><button onClick={()=>add('carbs',30)}>+30g Fruit/Bar</button><button onClick={()=>add('carbs',60)}>+60g Meal</button><button onClick={()=>add('carbs',-30)}>-30g</button></div><Macro name="Fat" val={n.fat} goal={defaultTargets.fat} unit="g"/><div className="quick"><button onClick={()=>add('fat',15)}>+15g</button><button onClick={()=>add('fat',25)}>+25g</button><button onClick={()=>add('fat',-15)}>-15g</button></div><Macro name="Water" val={n.water} goal={defaultTargets.water} unit="L"/><div className="quick"><button onClick={()=>add('water',.5)}>+0.5L</button><button onClick={()=>add('water',1)}>+1L</button><button onClick={()=>add('water',-.5)}>-0.5L</button></div></div>}
-function MacroBars({nutrition}){return <div className="card"><div className="title">Macros</div><Macro name="Protein" val={nutrition.protein} goal={defaultTargets.protein} unit="g"/><Macro name="Carbs" val={nutrition.carbs} goal={defaultTargets.carbs} unit="g"/><Macro name="Fat" val={nutrition.fat} goal={defaultTargets.fat} unit="g"/><Macro name="Water" val={nutrition.water} goal={defaultTargets.water} unit="L"/></div>}
-function Macro({name,val,goal,unit}){const pct=Math.min(100,Math.round((Number(val)||0)/goal*100));return <div className="macro"><div className="row"><span>{name}</span><span className="muted">{val||0}/{goal}{unit}</span></div><div className="bar"><div className="fill" style={{width:pct+'%'}}/></div></div>}
-function Recovery({log,updateLog}){const r=log.recovery;const set=(k,v)=>updateLog({recovery:{...r,[k]:v}});return <div className="card"><div className="title">Recovery Log</div><label className="small muted">Sleep Hours</label><input className="input" value={r.sleep} onChange={e=>set('sleep',e.target.value)} placeholder="7.8"/><label className="small muted">WHOOP / Recovery %</label><input className="input" value={r.whoop} onChange={e=>set('whoop',e.target.value)} placeholder="82"/><label className="small muted">Body Weight</label><input className="input" value={r.weight} onChange={e=>set('weight',e.target.value)} placeholder="188.2"/><label className="small muted">Soreness: {r.soreness}/10</label><input type="range" min="1" max="10" value={r.soreness} onChange={e=>set('soreness',e.target.value)} className="input"/><label className="small muted">Mood</label><select className="input" value={r.mood} onChange={e=>set('mood',e.target.value)}><option>great</option><option>good</option><option>okay</option><option>tired</option><option>beat up</option></select></div>}
-function Notes({log,updateLog}){return <div className="card"><div className="title">Daily Notes</div><textarea className="input textarea" value={log.notes} onChange={e=>updateLog({notes:e.target.value})} placeholder="How did you feel? Anything to adjust?"/></div>}
-function HistoryPage({data}){const entries=Object.entries(data).sort((a,b)=>b[0].localeCompare(a[0]));const chart=entries.slice().reverse().map(([date,log])=>({date:date.slice(5),weight:Number(log.recovery?.weight)||null,sleep:Number(log.recovery?.sleep)||null}));return <><div className="card"><div className="title">History</div>{entries.length===0&&<div className="muted">No saved logs yet.</div>}{entries.map(([date,log])=><div className="history-item" key={date}><div className="row"><b>{date}</b><span className="muted small">Sleep {log.recovery?.sleep||'—'} / Wt {log.recovery?.weight||'—'}</span></div><div className="small muted">Protein {log.nutrition?.protein||0}g • Carbs {log.nutrition?.carbs||0}g • Fat {log.nutrition?.fat||0}g</div></div>)}</div><div className="card"><div className="title">Weight Trend</div><div style={{height:220}}><ResponsiveContainer width="100%" height="100%"><LineChart data={chart}><XAxis dataKey="date"/><YAxis domain={['dataMin-2','dataMax+2']}/><Tooltip/><Line type="monotone" dataKey="weight" strokeWidth={3} connectNulls/></LineChart></ResponsiveContainer></div></div></>}
-function Nav({tab,setTab}){const tabs=[['home',Home,'Home'],['workout',Dumbbell,'Workout'],['nutrition',Utensils,'Food'],['recovery',Activity,'Recovery'],['history',History,'History']];return <div className="nav"><div className="nav-inner">{tabs.map(([id,Icon,label])=><button key={id} className={'tab '+(tab===id?'active':'')} onClick={()=>setTab(id)}><Icon size={19}/><span>{label}</span></button>)}</div></div>}
-createRoot(document.getElementById('root')).render(<App/>);
+import React, { useEffect, useMemo, useState } from 'react'
+import { createRoot } from 'react-dom/client'
+import { Activity, Apple, BarChart3, CheckCircle2, Dumbbell, HeartPulse, Home, Plus, RotateCcw, Timer, Utensils, Zap } from 'lucide-react'
+import { weekPlan, macroTargets } from './data/program'
+import './styles.css'
+
+const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const todayName = () => days[new Date().getDay()]
+const storageKey = 'athlete-os-v2'
+
+function loadState() {
+  try { return JSON.parse(localStorage.getItem(storageKey)) || {} } catch { return {} }
+}
+function saveState(state) { localStorage.setItem(storageKey, JSON.stringify(state)) }
+function todayId() { return new Date().toISOString().slice(0,10) }
+
+function App() {
+  const [tab, setTab] = useState('Home')
+  const [state, setState] = useState(loadState)
+  const dateId = todayId()
+  const day = todayName()
+  const plan = weekPlan[day]
+  const isLight = ['Tuesday','Thursday'].includes(day)
+  const targets = isLight ? macroTargets.light : macroTargets.training
+  const log = state[dateId] || { checks: {}, macros: { protein:0, carbs:0, fat:0, water:0 }, recovery: { sleep:'', weight:'', whoop:'', soreness:3 }, notes:'' }
+  const updateLog = patch => setState(prev => ({ ...prev, [dateId]: { ...log, ...patch } }))
+  useEffect(() => saveState(state), [state])
+  const completed = plan.items.filter(item => log.checks?.[item]).length
+  const pct = Math.round((completed / plan.items.length) * 100)
+
+  const props = { day, plan, log, targets, updateLog, pct, completed }
+
+  return <div className="app">
+    <header className="top"><div><p className="eyebrow">AthleteOS</p><h1>{day}</h1></div><div className="score">{pct}%</div></header>
+    <main>
+      {tab === 'Home' && <HomePage {...props} />}
+      {tab === 'Workout' && <WorkoutPage {...props} />}
+      {tab === 'Nutrition' && <NutritionPage {...props} />}
+      {tab === 'Throwing' && <ThrowingPage {...props} />}
+      {tab === 'Recovery' && <RecoveryPage {...props} />}
+      {tab === 'Progress' && <ProgressPage state={state} />}
+    </main>
+    <nav className="nav">{[
+      ['Home', Home], ['Workout', Dumbbell], ['Nutrition', Utensils], ['Throwing', Zap], ['Recovery', HeartPulse], ['Progress', BarChart3]
+    ].map(([name, Icon]) => <button key={name} onClick={()=>setTab(name)} className={tab===name?'active':''}><Icon size={20}/><span>{name}</span></button>)}</nav>
+  </div>
+}
+
+function Card({children, className=''}) { return <section className={`card ${className}`}>{children}</section> }
+function Progress({value}) { return <div className="bar"><span style={{width:`${Math.min(value,100)}%`}} /></div> }
+
+function HomePage({ day, plan, log, targets, updateLog, pct, completed }) {
+  return <div className="stack">
+    <Card className="hero"><p className="eyebrow">Today's Focus</p><h2>{plan.focus}</h2><span className="pill">{plan.type}</span><Progress value={pct}/><p>{completed}/{plan.items.length} tasks complete</p></Card>
+    <Card><h3>Daily Checklist</h3>{plan.items.slice(0,6).map(item => <CheckRow key={item} item={item} log={log} updateLog={updateLog}/>)}</Card>
+    <MacroMini log={log} targets={targets} updateLog={updateLog}/>
+    <RecoveryMini log={log} updateLog={updateLog}/>
+  </div>
+}
+function CheckRow({item, log, updateLog}) {
+  const checked = !!log.checks?.[item]
+  return <button className="checkrow" onClick={()=> updateLog({ checks: { ...log.checks, [item]: !checked }}) }><CheckCircle2 className={checked?'done':''}/><span>{item}</span></button>
+}
+function WorkoutPage({ plan, log, updateLog, pct }) {
+  return <div className="stack"><Card><div className="row"><div><p className="eyebrow">Coach Mode</p><h2>{plan.focus}</h2></div><Timer/></div><Progress value={pct}/></Card><Card>{plan.items.map(item => <CheckRow key={item} item={item} log={log} updateLog={updateLog}/>)}</Card><Notes log={log} updateLog={updateLog}/></div>
+}
+function MacroMini({log, targets, updateLog}) { return <Card><h3>Nutrition</h3><Macro name="Protein" unit="g" value={log.macros.protein} target={targets.protein} add={25} log={log} updateLog={updateLog}/><Macro name="Carbs" unit="g" value={log.macros.carbs} target={targets.carbs} add={50} log={log} updateLog={updateLog}/><Macro name="Fat" unit="g" value={log.macros.fat} target={targets.fat} add={15} log={log} updateLog={updateLog}/></Card> }
+function NutritionPage(props) { return <div className="stack"><MacroMini {...props}/><Card><h3>Quick Add</h3><div className="grid"><Quick label="Shake" p={25} c={5} f={2} {...props}/><Quick label="Chicken + Rice" p={45} c={80} f={12} {...props}/><Quick label="Greek Yogurt" p={25} c={15} f={0} {...props}/><Quick label="Snack" p={10} c={35} f={8} {...props}/></div></Card></div> }
+function Macro({name, unit, value, target, add, log, updateLog}) {
+  const key = name.toLowerCase()
+  return <div className="macro"><div className="row"><b>{name}</b><span>{value}/{target}{unit}</span></div><Progress value={(value/target)*100}/><div className="actions"><button onClick={()=>updateLog({macros:{...log.macros,[key]:value+add}})}><Plus size={16}/> +{add}{unit}</button><button onClick={()=>updateLog({macros:{...log.macros,[key]:0}})}><RotateCcw size={16}/></button></div></div>
+}
+function Quick({label,p,c,f,log,updateLog}) { return <button className="quick" onClick={()=>updateLog({macros:{...log.macros,protein:log.macros.protein+p,carbs:log.macros.carbs+c,fat:log.macros.fat+f}})}><Apple/><b>{label}</b><span>{p}P / {c}C / {f}F</span></button> }
+function ThrowingPage({log,updateLog}) { const items=['Catch','Long Toss','Pull Downs','Ground Balls','Double Plays','Backhands','Short Hops','Arm Care']; return <div className="stack"><Card><h2>Throwing</h2>{items.map(item => <CheckRow key={item} item={`Throwing: ${item}`} log={log} updateLog={updateLog}/>)}</Card><Notes log={log} updateLog={updateLog}/></div> }
+function RecoveryMini({log, updateLog}) { return <Card><h3>Recovery</h3><div className="inputs"><label>Sleep<input value={log.recovery.sleep} onChange={e=>updateLog({recovery:{...log.recovery,sleep:e.target.value}})} placeholder="7.8"/></label><label>Weight<input value={log.recovery.weight} onChange={e=>updateLog({recovery:{...log.recovery,weight:e.target.value}})} placeholder="188.2"/></label><label>WHOOP<input value={log.recovery.whoop} onChange={e=>updateLog({recovery:{...log.recovery,whoop:e.target.value}})} placeholder="82"/></label></div></Card> }
+function RecoveryPage(props) { return <div className="stack"><RecoveryMini {...props}/><Card><h3>Soreness</h3><input type="range" min="1" max="10" value={props.log.recovery.soreness} onChange={e=>props.updateLog({recovery:{...props.log.recovery,soreness:e.target.value}})}/><p>{props.log.recovery.soreness}/10</p></Card><Notes {...props}/></div> }
+function Notes({log, updateLog}) { return <Card><h3>Notes</h3><textarea value={log.notes} onChange={e=>updateLog({notes:e.target.value})} placeholder="How did you feel today?" /></Card> }
+function ProgressPage({state}) { const entries = Object.entries(state).sort().slice(-7); return <div className="stack"><Card><h2>Last 7 Logs</h2>{entries.length===0 && <p>No saved days yet.</p>}{entries.map(([date,log]) => <div className="history" key={date}><b>{date}</b><span>{Object.values(log.checks||{}).filter(Boolean).length} tasks</span><span>{log.macros?.protein||0}g protein</span></div>)}</Card></div> }
+
+createRoot(document.getElementById('root')).render(<App />)
