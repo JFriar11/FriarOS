@@ -10,6 +10,8 @@ interface CoachExerciseCardProps {
   notes: string
   isComplete: boolean
   onTargetWeightChange: (value: string) => void
+  onSetsChange: (value: string) => void
+  onRepsChange: (value: string) => void
   onNotesChange: (value: string) => void
   onCompleteSet: () => void
   onNextExercise: () => void
@@ -27,6 +29,8 @@ export function CoachExerciseCard({
   notes,
   isComplete,
   onTargetWeightChange,
+  onSetsChange,
+  onRepsChange,
   onNotesChange,
   onCompleteSet,
   onNextExercise,
@@ -35,6 +39,14 @@ export function CoachExerciseCard({
 }: CoachExerciseCardProps) {
   const handleWeightChange = (event: ChangeEvent<HTMLInputElement>) => {
     onTargetWeightChange(event.target.value)
+  }
+
+  const handleSetsChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onSetsChange(event.target.value)
+  }
+
+  const handleRepsChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onRepsChange(event.target.value)
   }
 
   const handleNotesChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -60,6 +72,17 @@ export function CoachExerciseCard({
           <span className="coach-card__label">Previous</span>
           <strong>{previousValue || '—'}</strong>
         </div>
+      </div>
+
+      <div className="coach-row">
+        <label className="coach-field">
+          <span>Sets</span>
+          <input value={targetSets} onChange={handleSetsChange} inputMode="numeric" />
+        </label>
+        <label className="coach-field">
+          <span>Reps</span>
+          <input value={targetReps} onChange={handleRepsChange} />
+        </label>
       </div>
 
       <label className="coach-field">

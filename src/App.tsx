@@ -298,7 +298,7 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
     })
   }
 
-  const updateExerciseField = (field: 'targetWeight' | 'notes', value: string) => {
+  const updateExerciseField = (field: 'targetWeight' | 'notes' | 'reps', value: string) => {
     if (!activeExercise) {
       return
     }
@@ -306,6 +306,20 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
     updateWorkoutSession((session) => ({
       ...session,
       exercises: session.exercises.map((exercise, index) => (index === session.activeExerciseIndex ? { ...exercise, [field]: value } : exercise))
+    }))
+  }
+
+  const updateExerciseSets = (value: string) => {
+    if (!activeExercise) {
+      return
+    }
+
+    const parsedSets = Number.parseInt(value, 10)
+    const safeSets = Number.isNaN(parsedSets) || parsedSets < 1 ? 1 : parsedSets
+
+    updateWorkoutSession((session) => ({
+      ...session,
+      exercises: session.exercises.map((exercise, index) => (index === session.activeExerciseIndex ? { ...exercise, sets: safeSets } : exercise))
     }))
   }
 
@@ -365,6 +379,8 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
           notes={activeExercise.notes}
           isComplete={activeExercise.completed}
           onTargetWeightChange={(value) => updateExerciseField('targetWeight', value)}
+          onSetsChange={(value) => updateExerciseSets(value)}
+          onRepsChange={(value) => updateExerciseField('reps', value)}
           onNotesChange={(value) => updateExerciseField('notes', value)}
           onCompleteSet={handleCompleteSet}
           onNextExercise={handleNextExercise}

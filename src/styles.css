@@ -74,6 +74,7 @@ input[type='range'] { accent-color: #38bdf8; }
 .coach-card__badge { background: rgba(56, 189, 248, .16); color: #bae6fd; border: 1px solid rgba(125, 211, 252, .24); border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; white-space: nowrap; }
 .coach-card__meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .coach-card__label { display: block; color: #94a3b8; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+.coach-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .coach-field { display: grid; gap: 6px; color: #cbd5e1; font-size: 12px; font-weight: 700; }
 .coach-field textarea { min-height: 92px; }
 .coach-actions { display: grid; gap: 10px; }
@@ -92,4 +93,4 @@ input[type='range'] { accent-color: #38bdf8; }
 .coach-finish__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .coach-finish__stats > div { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 10px; display: grid; gap: 4px; }
 .coach-finish__stats span { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
-@media (max-width: 380px) { .nav span { display: none; } .inputs { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: 1fr; } .lift-fields { grid-template-columns: 1fr 1fr; } .coach-card__meta, .coach-finish__stats { grid-template-columns: 1fr; } }
+@media (max-width: 380px) { .nav span { display: none; } .inputs { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: 1fr; } .lift-fields { grid-template-columns: 1fr 1fr; } .coach-card__meta, .coach-finish__stats, .coach-row { grid-template-columns: 1fr; } }
