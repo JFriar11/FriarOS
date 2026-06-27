@@ -13,7 +13,7 @@ import {
   Utensils,
   Zap
 } from 'lucide-react'
-import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card } from './components/ui/Card'
 import { ProgressBar } from './components/ui/ProgressBar'
 import { ChecklistRow } from './components/ChecklistRow'
@@ -47,7 +47,7 @@ const planDefaults = {
   Thursday: [defaultWeeklyPlan.Thursday, throwingPlan.join('\n')].filter(Boolean).join('\n\nThrowing:\n')
 } as WeeklyPlanMap
 
-type TabName = 'Home' | 'Workout' | 'Nutrition' | 'Throwing' | 'Recovery' | 'Plan' | 'History'
+type TabName = 'Home' | 'Workout' | 'Nutrition' | 'Throwing' | 'Recovery' | 'Plan' | 'Progress' | 'History'
 
 function getPreviousValue(exerciseName: string, state: AppState) {
   const entries = Object.entries(state)
@@ -153,6 +153,7 @@ function App() {
         {tab === 'Throwing' && <ThrowingPage {...props} />}
         {tab === 'Recovery' && <RecoveryPage {...props} />}
         {tab === 'Plan' && <PlanPage day={day} weeklyPlan={weeklyPlan} updateWeekPlan={updateWeekPlan} programTemplate={programTemplate} activeWeekName={activeWeekName} setState={setState} />}
+        {tab === 'Progress' && <ProgressPage state={state} />}
         {tab === 'History' && <HistoryPage state={state} />}
       </main>
       <nav className="nav">
@@ -163,6 +164,7 @@ function App() {
           ['Throwing', Zap],
           ['Recovery', HeartPulse],
           ['Plan', Activity],
+          ['Progress', BarChart3],
           ['History', BarChart3]
         ].map(([name, Icon]) => (
           <button key={name} onClick={() => setTab(name as TabName)} className={tab === name ? 'active' : ''}>
@@ -709,6 +711,216 @@ function PlanPage({ day, weeklyPlan, updateWeekPlan, programTemplate, activeWeek
           ))}
         </div>
       </Card>
+    </div>
+  )
+}
+
+function getWorkoutCompletionPercent(log: DailyLog | undefined) {
+  const normalized = normalizeLog(log)
+  if (normalized.workoutSession?.phase === 'finished') {
+    return 100
+  }
+
+  const exercises = normalized.workoutSession?.exercises || []
+  if (!exercises.length) {
+    return 0
+  }
+
+  const completedSets = exercises.reduce((total, exercise) => total + exercise.completedSets, 0)
+  const plannedSets = exercises.reduce((total, exercise) => total + Math.max(exercise.sets, 1), 0)
+  return Math.round((completedSets / Math.max(plannedSets, 1)) * 100)
+}
+
+function getSprintCompletionPercent(log: DailyLog | undefined) {
+  const normalized = normalizeLog(log)
+  const keys = Object.keys(normalized.checks || {})
+  const sprintKeys = keys.filter((key) => /sprint|speed|interval|pace|fly|accel|plyo|skip|ladder|bound|velocity/i.test(key))
+
+  if (!sprintKeys.length) {
+    return 0
+  }
+
+  const completed = sprintKeys.filter((key) => normalized.checks?.[key]).length
+  return Math.round((completed / sprintKeys.length) * 100)
+}
+
+function getThrowingVolume(log: DailyLog | undefined) {
+  const normalized = normalizeLog(log)
+  const keys = Object.keys(normalized.checks || {})
+  return keys.filter((key) => key.startsWith('Throwing:') && normalized.checks?.[key]).length
+}
+
+function getStrengthProgression(log: DailyLog | undefined) {
+  const normalized = normalizeLog(log)
+  const weights = [] as number[]
+
+  normalized.lifts?.forEach((lift) => {
+    const parsed = Number.parseFloat(lift.weight || '')
+    if (!Number.isNaN(parsed)) {
+      weights.push(parsed)
+    }
+  })
+
+  normalized.workoutSession?.exercises?.forEach((exercise) => {
+    const parsed = Number.parseFloat(exercise.targetWeight || '')
+    if (!Number.isNaN(parsed)) {
+      weights.push(parsed)
+    }
+  })
+
+  return weights.length ? Math.max(...weights) : 0
+}
+
+interface ProgressPageProps {
+  state: AppState
+}
+
+function ProgressPage({ state }: ProgressPageProps) {
+  const [range, setRange] = useState<'week' | 'month'>('week')
+
+  const chartData = useMemo(() => {
+    const entries = Object.entries(state)
+      .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key))
+      .sort(([a], [b]) => a.localeCompare(b))
+
+    const maxDays = range === 'week' ? 7 : 30
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    start.setDate(start.getDate() - maxDays + 1)
+
+    const points = [] as Array<{ date: string; label: string; weight: number | null; protein: number; sleep: number; workout: number; sprint: number; throwing: number; strength: number }>
+
+    for (let index = 0; index < maxDays; index += 1) {
+      const cursor = new Date(start)
+      cursor.setDate(start.getDate() + index)
+      const dateKey = cursor.toISOString().slice(0, 10)
+      const entry = entries.find(([key]) => key === dateKey)
+      const log = entry?.[1]
+      const normalized = normalizeLog(log)
+
+      points.push({
+        date: dateKey,
+        label: cursor.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        weight: normalized.recovery?.weight ? Number.parseFloat(normalized.recovery.weight) : null,
+        protein: normalized.macros?.protein || 0,
+        sleep: normalized.recovery?.sleep ? Number.parseFloat(normalized.recovery.sleep) : 0,
+        workout: getWorkoutCompletionPercent(log),
+        sprint: getSprintCompletionPercent(log),
+        throwing: getThrowingVolume(log),
+        strength: getStrengthProgression(log)
+      })
+    }
+
+    return points
+  }, [range, state])
+
+  const metricCards = [
+    {
+      title: 'Body weight',
+      description: 'Track daily weight trend',
+      dataKey: 'weight',
+      unit: 'lb',
+      chart: 'line' as const
+    },
+    {
+      title: 'Protein',
+      description: 'Daily protein intake',
+      dataKey: 'protein',
+      unit: 'g',
+      chart: 'area' as const
+    },
+    {
+      title: 'Sleep',
+      description: 'Hours of sleep',
+      dataKey: 'sleep',
+      unit: 'h',
+      chart: 'line' as const
+    },
+    {
+      title: 'Workout completion %',
+      description: 'Coach-mode progress',
+      dataKey: 'workout',
+      unit: '%',
+      chart: 'bar' as const
+    },
+    {
+      title: 'Sprint completion %',
+      description: 'Sprint-focused work',
+      dataKey: 'sprint',
+      unit: '%',
+      chart: 'bar' as const
+    },
+    {
+      title: 'Throwing volume',
+      description: 'Completed throwing items',
+      dataKey: 'throwing',
+      unit: 'items',
+      chart: 'bar' as const
+    },
+    {
+      title: 'Strength progression',
+      description: 'Best logged weight',
+      dataKey: 'strength',
+      unit: 'lb',
+      chart: 'line' as const
+    }
+  ]
+
+  return (
+    <div className="stack">
+      <Card>
+        <div className="row">
+          <div>
+            <p className="eyebrow">Progress</p>
+            <h2>Training trends</h2>
+          </div>
+          <div className="history-month-nav">
+            <button className={`text-button ${range === 'week' ? 'active' : ''}`} onClick={() => setRange('week')}>Week</button>
+            <button className={`text-button ${range === 'month' ? 'active' : ''}`} onClick={() => setRange('month')}>Month</button>
+          </div>
+        </div>
+        <p className="muted">Review the last {range === 'week' ? '7 days' : '30 days'} of training data in a compact mobile view.</p>
+      </Card>
+
+      {metricCards.map((metric) => (
+        <Card key={metric.title}>
+          <div className="section-title">
+            <div>
+              <h3>{metric.title}</h3>
+              <p className="muted">{metric.description}</p>
+            </div>
+          </div>
+          <div className="chart-card">
+            <ResponsiveContainer width="100%" height={180}>
+              {metric.chart === 'bar' ? (
+                <BarChart data={chartData}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={34} />
+                  <Tooltip />
+                  <Bar dataKey={metric.dataKey} fill="#38bdf8" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              ) : metric.chart === 'area' ? (
+                <AreaChart data={chartData}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey={metric.dataKey} stroke="#22c55e" fill="rgba(34,197,94,0.22)" />
+                </AreaChart>
+              ) : (
+                <LineChart data={chartData}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey={metric.dataKey} stroke="#7dd3fc" strokeWidth={2} dot={false} />
+                </LineChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      ))}
     </div>
   )
 }

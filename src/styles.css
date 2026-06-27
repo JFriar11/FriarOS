@@ -44,6 +44,8 @@ input[type='range'] { accent-color: #38bdf8; }
 .history-month-nav { display: flex; align-items: center; gap: 8px; }
 .history-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 .history-weekday { text-align: center; color: #94a3b8; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.chart-card { margin-top: 6px; }
+.text-button.active { background: rgba(56, 189, 248, .18); border-color: rgba(125, 211, 252, .28); }
 .history-day { display: grid; gap: 4px; justify-items: start; min-height: 72px; border-radius: 14px; border: 1px solid rgba(148,163,184,.16); padding: 8px; background: rgba(255,255,255,.05); color: #e2e8f0; text-align: left; }
 .history-day strong { font-size: 14px; }
 .history-day span { font-size: 10px; line-height: 1.2; color: #cbd5e1; }
