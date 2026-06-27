@@ -20,6 +20,12 @@ h3 { font-size: 18px; margin-bottom: 14px; }
 .checkrow:last-child { border-bottom: 0; }
 .checkrow svg { color: #64748b; }
 .checkrow svg.done { color: #22c55e; fill: rgba(34,197,94,.18); }
+.workout-item { display: flex; align-items: center; gap: 10px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+.workout-item:last-child { border-bottom: 0; }
+.workout-check { border-bottom: 0; padding: 10px 4px; flex: 1; }
+.weight-input { display: flex; align-items: center; gap: 6px; min-width: 96px; flex-shrink: 0; }
+.weight-input span { color: #94a3b8; font-size: 11px; font-weight: 700; }
+.weight-input input { width: 70px; margin-top: 0; padding: 8px 10px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .macro { margin-bottom: 18px; }
 .macro:last-child { margin-bottom: 0; }

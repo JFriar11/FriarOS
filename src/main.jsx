@@ -63,7 +63,12 @@ function CheckRow({item, log, updateLog}) {
   return <button className="checkrow" onClick={()=> updateLog({ checks: { ...log.checks, [item]: !checked }}) }><CheckCircle2 className={checked?'done':''}/><span>{item}</span></button>
 }
 function WorkoutPage({ plan, log, updateLog, pct }) {
-  return <div className="stack"><Card><div className="row"><div><p className="eyebrow">Coach Mode</p><h2>{plan.focus}</h2></div><Timer/></div><Progress value={pct}/></Card><Card>{plan.items.map(item => <CheckRow key={item} item={item} log={log} updateLog={updateLog}/>)}</Card><Notes log={log} updateLog={updateLog}/></div>
+  return <div className="stack"><Card><div className="row"><div><p className="eyebrow">Coach Mode</p><h2>{plan.focus}</h2></div><Timer/></div><Progress value={pct}/></Card><Card>{plan.items.map(item => <WorkoutRow key={item} item={item} log={log} updateLog={updateLog}/>)}</Card><Notes log={log} updateLog={updateLog}/></div>
+}
+function WorkoutRow({ item, log, updateLog }) {
+  const checked = !!log.checks?.[item]
+  const weightValue = log.weights?.[item] || ''
+  return <div className="workout-item"><button className="checkrow workout-check" onClick={()=> updateLog({ checks: { ...log.checks, [item]: !checked }}) }><CheckCircle2 className={checked?'done':''}/><span>{item}</span></button><label className="weight-input"><span>Weight</span><input value={weightValue} onChange={e=>updateLog({ weights: { ...(log.weights || {}), [item]: e.target.value } })} placeholder="135" /></label></div>
 }
 function MacroMini({log, targets, updateLog}) { return <Card><h3>Nutrition</h3><Macro name="Protein" unit="g" value={log.macros.protein} target={targets.protein} add={25} log={log} updateLog={updateLog}/><Macro name="Carbs" unit="g" value={log.macros.carbs} target={targets.carbs} add={50} log={log} updateLog={updateLog}/><Macro name="Fat" unit="g" value={log.macros.fat} target={targets.fat} add={15} log={log} updateLog={updateLog}/></Card> }
 function NutritionPage(props) { return <div className="stack"><MacroMini {...props}/><Card><h3>Quick Add</h3><div className="grid"><Quick label="Shake" p={25} c={5} f={2} {...props}/><Quick label="Chicken + Rice" p={45} c={80} f={12} {...props}/><Quick label="Greek Yogurt" p={25} c={15} f={0} {...props}/><Quick label="Snack" p={10} c={35} f={8} {...props}/></div></Card></div> }
