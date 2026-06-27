@@ -18,9 +18,9 @@ import { Card } from './components/ui/Card'
 import { ProgressBar } from './components/ui/ProgressBar'
 import { ChecklistRow } from './components/ChecklistRow'
 import { usePersistentState } from './hooks/usePersistentState'
-import { weekPlan, macroTargets } from './data/program'
-import { buildPlan, DAYS, getTodayId, getTodayName, normalizeLog } from './utils/plan'
-import type { AppState, DailyLog, LiftEntry, MacroTargets, PlanDay, ProgramTemplate, WeeklyPlanMap, WorkoutExerciseState, WorkoutSessionState } from './types'
+import { weekPlan } from './data/program'
+import { DAYS, getTodayId, getTodayName, normalizeLog } from './utils/plan'
+import type { AppState, DailyLog, LiftEntry, MacroTargets, ProgramDay, ProgramTemplate, WeeklyPlanMap, WorkoutSessionState } from './types'
 import { CoachExerciseCard } from './components/workout/CoachExerciseCard'
 import { WorkoutFinishScreen } from './components/workout/WorkoutFinishScreen'
 import { defaultProgramTemplate, getProgramSnapshot, PROGRAM_WEEKS } from './data/programEngine'
@@ -114,13 +114,8 @@ function App() {
   const programTemplate = state.programTemplate || defaultProgramTemplate
   const activeWeekName = state.activeWeek || PROGRAM_WEEKS[0]
   const weeklyPlan = state.weekPlan || planDefaults
-  const currentPlanText = weeklyPlan[day] || weekPlan[day].items.join('\n')
   const programSnapshot = getProgramSnapshot(state, programTemplate, new Date(), activeWeekName)
-  const plan = programSnapshot.activeDay
-    ? { focus: programSnapshot.activeDay.focus, type: programSnapshot.activeDay.type, items: programSnapshot.activeDay.exercises }
-    : buildPlan(day, currentPlanText, weekPlan[day])
-  const isLight = ['Tuesday', 'Thursday'].includes(day)
-  const targets = isLight ? macroTargets.light : macroTargets.training
+  const programDay = programSnapshot.activeDay || defaultProgramTemplate.weeks[0].days[0]
   const log = normalizeLog(state[dateId])
 
   const updateLog = (patch: Partial<DailyLog>) => {
@@ -137,10 +132,10 @@ function App() {
     }))
   }
 
-  const completed = plan.items.filter((item) => log.checks?.[item]).length
-  const pct = Math.round((completed / plan.items.length) * 100)
+  const completed = programDay.exercises.filter((item) => log.checks?.[item]).length
+  const pct = programDay.exercises.length ? Math.round((completed / programDay.exercises.length) * 100) : 0
 
-  const props = { day, plan, log, targets, updateLog, pct, completed, state, programTemplate, activeWeekName, setState }
+  const props = { day, programDay, log, updateLog, pct, completed, state, programTemplate, activeWeekName, setState }
 
   return (
     <div className="app">
@@ -182,9 +177,8 @@ function App() {
 
 interface BasePageProps {
   day: string
-  plan: PlanDay
+  programDay: ProgramDay
   log: DailyLog
-  targets: MacroTargets
   updateLog: (patch: Partial<DailyLog>) => void
   pct: number
   completed: number
@@ -194,22 +188,22 @@ interface BasePageProps {
   setState?: Dispatch<SetStateAction<AppState>>
 }
 
-function HomePage({ day, plan, log, targets, updateLog, pct, completed }: BasePageProps) {
+function HomePage({ day, programDay, log, updateLog, pct, completed }: BasePageProps) {
   return (
     <div className="stack">
       <Card className="hero">
         <p className="eyebrow">Today's Focus</p>
-        <h2>{plan.focus}</h2>
-        <span className="pill">{plan.type}</span>
+        <h2>{programDay.focus}</h2>
+        <span className="pill">{programDay.type} · {programDay.difficulty}</span>
         <ProgressBar value={pct} />
-        <p>{completed}/{plan.items.length} tasks complete</p>
+        <p>{completed}/{programDay.exercises.length} tasks complete · {programDay.durationMinutes} min</p>
       </Card>
       <Card>
         <div className="section-title">
           <h3>Daily Checklist</h3>
           <span className="subtle">{day}</span>
         </div>
-        {plan.items.slice(0, 6).map((item) => (
+        {programDay.exercises.slice(0, 6).map((item) => (
           <ChecklistRow
             key={item}
             item={item}
@@ -218,22 +212,22 @@ function HomePage({ day, plan, log, targets, updateLog, pct, completed }: BasePa
           />
         ))}
       </Card>
-      <MacroMini log={log} targets={targets} updateLog={updateLog} />
+      <MacroMini log={log} targets={programDay.nutrition} updateLog={updateLog} />
       <RecoveryMini log={log} updateLog={updateLog} />
     </div>
   )
 }
 
-function WorkoutPage({ plan, log, updateLog, pct, state, programTemplate, activeWeekName }: BasePageProps) {
+function WorkoutPage({ programDay, log, updateLog, pct, state, programTemplate, activeWeekName }: BasePageProps) {
   const snapshot = programTemplate && activeWeekName ? getProgramSnapshot(state || {}, programTemplate, new Date(), activeWeekName) : null
-  const templateExercises = snapshot?.activeDay?.exercises || plan.items
+  const templateExercises = snapshot?.activeDay?.exercises || programDay.exercises
   const workoutSession = log.workoutSession || createWorkoutSession(templateExercises, state || {})
 
   useEffect(() => {
-    if (!log.workoutSession && plan.items.length) {
+    if (!log.workoutSession && programDay.exercises.length) {
       updateLog({ workoutSession: { ...workoutSession, exercises: workoutSession.exercises.map((exercise, index) => ({ ...exercise, name: templateExercises[index] || exercise.name })) } })
     }
-  }, [log.workoutSession, plan.items, updateLog, workoutSession, templateExercises])
+  }, [log.workoutSession, programDay.exercises, updateLog, workoutSession, templateExercises])
 
   useEffect(() => {
     if (workoutSession.phase !== 'rest' || workoutSession.restSecondsLeft <= 0) {
@@ -345,7 +339,7 @@ function WorkoutPage({ plan, log, updateLog, pct, state, programTemplate, active
           <div className="row">
             <div>
               <p className="eyebrow">Coach Mode</p>
-              <h2>{plan.focus}</h2>
+              <h2>{programDay.focus}</h2>
             </div>
             <Timer />
           </div>
@@ -367,7 +361,7 @@ function WorkoutPage({ plan, log, updateLog, pct, state, programTemplate, active
         <div className="row">
           <div>
             <p className="eyebrow">Coach Mode</p>
-            <h2>{plan.focus}</h2>
+            <h2>{programDay.focus}</h2>
           </div>
           <Timer />
         </div>
@@ -403,6 +397,16 @@ function WorkoutPage({ plan, log, updateLog, pct, state, programTemplate, active
           status={workoutSession.phase}
         />
       ) : null}
+
+      <Card>
+        <div className="section-title">
+          <h3>Warmup</h3>
+          <span className="subtle">{programDay.difficulty}</span>
+        </div>
+        <ul className="coach-list">
+          {programDay.warmup.map((item) => <li key={item}><span>{item}</span><small>Prep</small></li>)}
+        </ul>
+      </Card>
 
       <Card>
         <h3>Workout plan</h3>
@@ -511,7 +515,7 @@ function MacroMini({ log, targets, updateLog }: MacroMiniProps) {
 function NutritionPage(props: BasePageProps) {
   return (
     <div className="stack">
-      <MacroMini {...props} />
+      <MacroMini log={props.log} targets={props.programDay.nutrition} updateLog={props.updateLog} />
       <Card>
         <h3>Quick Add</h3>
         <div className="grid">
@@ -579,14 +583,15 @@ function Quick({ label, p, c, f, log, updateLog }: QuickProps) {
   )
 }
 
-function ThrowingPage({ log, updateLog }: Pick<BasePageProps, 'log' | 'updateLog'>) {
-  const items = ['Catch', 'Long Toss', 'Pull Downs', 'Ground Balls', 'Double Plays', 'Backhands', 'Short Hops', 'Arm Care']
-
+function ThrowingPage({ programDay, log, updateLog }: Pick<BasePageProps, 'programDay' | 'log' | 'updateLog'>) {
   return (
     <div className="stack">
       <Card>
-        <h2>Throwing</h2>
-        {items.map((item) => (
+        <div className="section-title">
+          <h2>Throwing</h2>
+          <span className="subtle">{programDay.focus}</span>
+        </div>
+        {programDay.throwing.items.map((item) => (
           <ChecklistRow key={item} item={`Throwing: ${item}`} checked={!!log.checks?.[`Throwing: ${item}`]} onToggle={() => updateLog({ checks: { ...log.checks, [`Throwing: ${item}`]: !log.checks?.[`Throwing: ${item}`] } })} />
         ))}
       </Card>
@@ -625,6 +630,15 @@ function RecoveryMini({ log, updateLog }: RecoveryMiniProps) {
 function RecoveryPage(props: BasePageProps) {
   return (
     <div className="stack">
+      <Card>
+        <div className="section-title">
+          <h3>Recovery checklist</h3>
+          <span className="subtle">{props.programDay.focus}</span>
+        </div>
+        <ul className="coach-list">
+          {props.programDay.recovery.map((item) => <li key={item.label}><span>{item.label}</span><small>Daily</small></li>)}
+        </ul>
+      </Card>
       <RecoveryMini {...props} />
       <Card>
         <h3>Soreness</h3>

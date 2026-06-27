@@ -50,11 +50,33 @@ export interface WorkoutSessionState {
   exercises: WorkoutExerciseState[]
 }
 
+export interface ThrowingPlan {
+  items: string[]
+}
+
+export interface NutritionTargets {
+  protein: number
+  carbs: number
+  fat: number
+  water: number
+}
+
+export interface RecoveryChecklistItem {
+  label: string
+  completed?: boolean
+}
+
 export interface ProgramDay {
   day: string
   focus: string
   type: string
+  difficulty: 'Recovery' | 'Medium' | 'High'
+  durationMinutes: number
+  warmup: string[]
   exercises: string[]
+  throwing: ThrowingPlan
+  nutrition: NutritionTargets
+  recovery: RecoveryChecklistItem[]
 }
 
 export interface ProgramWeek {
