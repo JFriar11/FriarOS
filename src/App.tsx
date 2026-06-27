@@ -191,31 +191,106 @@ interface BasePageProps {
 }
 
 function HomePage({ day, programDay, log, updateLog, pct, completed }: BasePageProps) {
+  const workoutCompleted = log.workoutSession?.phase === 'finished'
+  const waterGoal = 4
+  const waterIntake = Number(log.recovery?.whoop || 0) > 0 ? Math.min(waterGoal, Math.round(Number(log.recovery.whoop) / 25)) : 0
+  const sleepHours = Number(log.recovery?.sleep || 0)
+
   return (
-    <div className="stack">
-      <Card className="hero">
-        <p className="eyebrow">Today's Focus</p>
-        <h2>{programDay.focus}</h2>
-        <span className="pill">{programDay.type} · {programDay.difficulty}</span>
+    <div className="stack dashboard-stack">
+      <Card className="hero dashboard-hero">
+        <div className="dashboard-hero__top">
+          <div>
+            <p className="eyebrow">Good morning</p>
+            <h2>What do I need to do today?</h2>
+          </div>
+          <div className="dashboard-hero__badge">{day}</div>
+        </div>
+        <p className="dashboard-hero__copy">{programDay.focus} · {programDay.type}</p>
         <ProgressBar value={pct} />
-        <p>{completed}/{programDay.exercises.length} tasks complete · {programDay.durationMinutes} min</p>
+        <div className="dashboard-hero__stats">
+          <div>
+            <span>Workout</span>
+            <strong>{completed}/{programDay.exercises.length}</strong>
+          </div>
+          <div>
+            <span>Duration</span>
+            <strong>{programDay.durationMinutes} min</strong>
+          </div>
+        </div>
+        <button className="coach-primary dashboard-cta" onClick={() => updateLog({ workoutSession: createWorkoutSession(programDay.exercises, {}) })}>Quick Start Workout</button>
       </Card>
+
       <Card>
         <div className="section-title">
-          <h3>Daily Checklist</h3>
-          <span className="subtle">{day}</span>
+          <h3>Recovery</h3>
+          <span className="subtle">{programDay.difficulty}</span>
         </div>
-        {programDay.exercises.slice(0, 6).map((item) => (
-          <ChecklistRow
-            key={item}
-            item={item}
-            checked={!!log.checks?.[item]}
-            onToggle={() => updateLog({ checks: { ...log.checks, [item]: !log.checks?.[item] } })}
-          />
-        ))}
+        <div className="dashboard-grid">
+          <div className="dashboard-metric">
+            <span>Water</span>
+            <strong>{waterIntake}/{waterGoal} L</strong>
+          </div>
+          <div className="dashboard-metric">
+            <span>Sleep</span>
+            <strong>{sleepHours ? `${sleepHours}h` : '—'}</strong>
+          </div>
+          <div className="dashboard-metric">
+            <span>Workout</span>
+            <strong>{workoutCompleted ? 'Done' : 'Pending'}</strong>
+          </div>
+          <div className="dashboard-metric">
+            <span>Throwing</span>
+            <strong>{Object.keys(log.checks || {}).some((key) => key.startsWith('Throwing:') && log.checks?.[key]) ? 'Done' : 'Pending'}</strong>
+          </div>
+        </div>
       </Card>
-      <MacroMini log={log} targets={programDay.nutrition} updateLog={updateLog} />
-      <RecoveryMini log={log} updateLog={updateLog} />
+
+      <Card>
+        <div className="section-title">
+          <h3>Today's Workout</h3>
+          <span className="subtle">{programDay.focus}</span>
+        </div>
+        <ul className="coach-list">
+          {programDay.exercises.slice(0, 5).map((item) => (
+            <li key={item}>
+              <span>{item}</span>
+              <small>{log.checks?.[item] ? 'Complete' : 'Next'}</small>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card>
+        <div className="section-title">
+          <h3>Today's Throwing</h3>
+          <span className="subtle">{programDay.throwing.items.length} items</span>
+        </div>
+        <ul className="coach-list">
+          {programDay.throwing.items.slice(0, 4).map((item) => (
+            <li key={item}>
+              <span>{item}</span>
+              <small>{log.checks?.[`Throwing: ${item}`] ? 'Done' : 'Pending'}</small>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card>
+        <div className="section-title">
+          <h3>Nutrition Progress</h3>
+          <span className="subtle">{programDay.nutrition.protein}g protein</span>
+        </div>
+        <MacroMini log={log} targets={programDay.nutrition} updateLog={updateLog} />
+      </Card>
+
+      <Card>
+        <div className="section-title">
+          <h3>Workout Progress</h3>
+          <span className="subtle">{pct}%</span>
+        </div>
+        <ProgressBar value={pct} />
+      </Card>
     </div>
   )
 }
