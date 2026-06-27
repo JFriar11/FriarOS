@@ -17,6 +17,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, Respons
 import { Card } from './components/ui/Card'
 import { ProgressBar } from './components/ui/ProgressBar'
 import { ChecklistRow } from './components/ChecklistRow'
+import { AuthPanel } from './components/AuthPanel'
 import { usePersistentState } from './hooks/usePersistentState'
 import { weekPlan } from './data/program'
 import { DAYS, getTodayId, getTodayName, normalizeLog } from './utils/plan'
@@ -24,6 +25,8 @@ import type { AppState, DailyLog, LiftEntry, MacroTargets, ProgramDay, ProgramTe
 import { CoachExerciseCard } from './components/workout/CoachExerciseCard'
 import { WorkoutFinishScreen } from './components/workout/WorkoutFinishScreen'
 import { defaultProgramTemplate, getProgramSnapshot, PROGRAM_WEEKS } from './data/programEngine'
+import { isSupabaseConfigured } from './lib/supabase'
+import { getAuthSessionState, signOut, syncAppState } from './lib/supabaseData'
 
 const throwingPlan = [
   'Catch',
@@ -105,10 +108,34 @@ function formatDuration(totalSeconds: number) {
 
 function App() {
   const [tab, setTab] = useState<TabName>('Home')
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [syncMessage, setSyncMessage] = useState('')
+  const [isSyncing, setIsSyncing] = useState(false)
   const [state, setState] = usePersistentState<AppState>({
     programTemplate: defaultProgramTemplate,
     activeWeek: PROGRAM_WEEKS[0]
   })
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function restoreSession() {
+      if (!isSupabaseConfigured()) {
+        return
+      }
+
+      const sessionState = await getAuthSessionState()
+      if (!cancelled) {
+        setIsAuthenticated(sessionState.isAuthenticated)
+      }
+    }
+
+    restoreSession()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const dateId = getTodayId()
   const day = getTodayName()
   const programTemplate = state.programTemplate || defaultProgramTemplate
@@ -137,6 +164,35 @@ function App() {
 
   const props = { day, programDay, log, updateLog, pct, completed, state, programTemplate, activeWeekName, setState }
 
+  const handleSync = async () => {
+    if (!isSupabaseConfigured() || !isAuthenticated) {
+      setSyncMessage('Sign in first to sync to the cloud')
+      return
+    }
+
+    setIsSyncing(true)
+    setSyncMessage('')
+
+    try {
+      await syncAppState(state)
+      setSyncMessage('Synced to cloud')
+    } catch {
+      setSyncMessage('Sync failed')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+      setIsAuthenticated(false)
+      setSyncMessage('Signed out locally')
+    } catch {
+      setSyncMessage('Could not sign out')
+    }
+  }
+
   return (
     <div className="app">
       <header className="top">
@@ -144,10 +200,29 @@ function App() {
           <p className="eyebrow">AthleteOS</p>
           <h1>{day}</h1>
         </div>
-        <div className="score">{pct}%</div>
+        <div className="top-meta">
+          {isSupabaseConfigured() ? <div className="sync-pill">{isAuthenticated ? 'Cloud ready' : 'Local + cloud'}</div> : null}
+          <div className="score">{pct}%</div>
+        </div>
       </header>
+      {isSupabaseConfigured() ? (
+        <div className="sync-bar">
+          <div className="sync-bar__copy">
+            <strong>{isAuthenticated ? 'Signed in' : 'Local mode'}</strong>
+            <span>{syncMessage || (isAuthenticated ? 'Your data can sync to the cloud' : 'Sign in to back up your data')}</span>
+          </div>
+          <div className="sync-actions">
+            <button className="secondary-action" onClick={handleSync} disabled={isSyncing || !isAuthenticated}>
+              {isSyncing ? 'Syncing…' : 'Sync now'}
+            </button>
+            {isAuthenticated ? (
+              <button className="secondary-action" onClick={handleSignOut}>Sign out</button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <main>
-        {tab === 'Home' && <HomePage {...props} />}
+        {tab === 'Home' && <HomePage {...props} isAuthenticated={isAuthenticated} onAuthenticated={() => setIsAuthenticated(true)} />}
         {tab === 'Workout' && <WorkoutPage {...props} />}
         {tab === 'Nutrition' && <NutritionPage {...props} />}
         {tab === 'Throwing' && <ThrowingPage {...props} />}
@@ -190,7 +265,7 @@ interface BasePageProps {
   setState?: Dispatch<SetStateAction<AppState>>
 }
 
-function HomePage({ day, programDay, log, updateLog, pct, completed }: BasePageProps) {
+function HomePage({ day, programDay, log, updateLog, pct, completed, isAuthenticated, onAuthenticated }: BasePageProps & { isAuthenticated?: boolean; onAuthenticated?: () => void }) {
   const workoutCompleted = log.workoutSession?.phase === 'finished'
   const waterGoal = 4
   const waterIntake = Number(log.recovery?.whoop || 0) > 0 ? Math.min(waterGoal, Math.round(Number(log.recovery.whoop) / 25)) : 0
@@ -198,6 +273,9 @@ function HomePage({ day, programDay, log, updateLog, pct, completed }: BasePageP
 
   return (
     <div className="stack dashboard-stack">
+      {isSupabaseConfigured() && !isAuthenticated ? (
+        <AuthPanel onAuthenticated={onAuthenticated} />
+      ) : null}
       <Card className="hero dashboard-hero">
         <div className="dashboard-hero__top">
           <div>

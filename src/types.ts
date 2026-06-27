@@ -114,3 +114,17 @@ export interface AppState {
   programTemplate?: ProgramTemplate
   activeWeek?: string
 }
+
+export interface SupabaseProfile {
+  id: string
+  display_name?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SupabaseAppStateRecord {
+  id?: string
+  user_id: string
+  data: AppState
+  updated_at?: string
+}
