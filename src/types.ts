@@ -38,6 +38,7 @@ export interface WorkoutExerciseState {
   notes: string
   completedSets: number
   completed: boolean
+  templateIndex?: number
 }
 
 export interface WorkoutSessionState {
@@ -47,6 +48,24 @@ export interface WorkoutSessionState {
   phase: 'active' | 'rest' | 'finished'
   restSecondsLeft: number
   exercises: WorkoutExerciseState[]
+}
+
+export interface ProgramDay {
+  day: string
+  focus: string
+  type: string
+  exercises: string[]
+}
+
+export interface ProgramWeek {
+  week: string
+  days: ProgramDay[]
+}
+
+export interface ProgramTemplate {
+  phase: string
+  startDate?: string
+  weeks: ProgramWeek[]
 }
 
 export interface DailyLog {
@@ -70,4 +89,6 @@ export type WeeklyPlanMap = Record<string, string>
 export interface AppState {
   [date: string]: DailyLog | undefined
   weekPlan?: WeeklyPlanMap
+  programTemplate?: ProgramTemplate
+  activeWeek?: string
 }

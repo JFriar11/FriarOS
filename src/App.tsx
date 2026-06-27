@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import {
   Activity,
   Apple,
@@ -20,9 +20,10 @@ import { ChecklistRow } from './components/ChecklistRow'
 import { usePersistentState } from './hooks/usePersistentState'
 import { weekPlan, macroTargets } from './data/program'
 import { buildPlan, DAYS, getTodayId, getTodayName, normalizeLog } from './utils/plan'
-import type { AppState, DailyLog, LiftEntry, MacroTargets, PlanDay, WeeklyPlanMap, WorkoutExerciseState, WorkoutSessionState } from './types'
+import type { AppState, DailyLog, LiftEntry, MacroTargets, PlanDay, ProgramTemplate, WeeklyPlanMap, WorkoutExerciseState, WorkoutSessionState } from './types'
 import { CoachExerciseCard } from './components/workout/CoachExerciseCard'
 import { WorkoutFinishScreen } from './components/workout/WorkoutFinishScreen'
+import { defaultProgramTemplate, getProgramSnapshot, PROGRAM_WEEKS } from './data/programEngine'
 
 const throwingPlan = [
   'Catch',
@@ -74,7 +75,7 @@ function createWorkoutSession(planItems: string[], state: AppState): WorkoutSess
     activeExerciseIndex: 0,
     phase: 'active',
     restSecondsLeft: 0,
-    exercises: planItems.map((item) => ({
+    exercises: planItems.map((item, index) => ({
       name: item,
       sets: 3,
       reps: '5',
@@ -82,7 +83,8 @@ function createWorkoutSession(planItems: string[], state: AppState): WorkoutSess
       targetWeight: '',
       notes: '',
       completedSets: 0,
-      completed: false
+      completed: false,
+      templateIndex: index
     }))
   }
 }
@@ -103,12 +105,20 @@ function formatDuration(totalSeconds: number) {
 
 function App() {
   const [tab, setTab] = useState<TabName>('Home')
-  const [state, setState] = usePersistentState<AppState>({})
+  const [state, setState] = usePersistentState<AppState>({
+    programTemplate: defaultProgramTemplate,
+    activeWeek: PROGRAM_WEEKS[0]
+  })
   const dateId = getTodayId()
   const day = getTodayName()
+  const programTemplate = state.programTemplate || defaultProgramTemplate
+  const activeWeekName = state.activeWeek || PROGRAM_WEEKS[0]
   const weeklyPlan = state.weekPlan || planDefaults
   const currentPlanText = weeklyPlan[day] || weekPlan[day].items.join('\n')
-  const plan = buildPlan(day, currentPlanText, weekPlan[day])
+  const programSnapshot = getProgramSnapshot(state, programTemplate, new Date(), activeWeekName)
+  const plan = programSnapshot.activeDay
+    ? { focus: programSnapshot.activeDay.focus, type: programSnapshot.activeDay.type, items: programSnapshot.activeDay.exercises }
+    : buildPlan(day, currentPlanText, weekPlan[day])
   const isLight = ['Tuesday', 'Thursday'].includes(day)
   const targets = isLight ? macroTargets.light : macroTargets.training
   const log = normalizeLog(state[dateId])
@@ -130,7 +140,7 @@ function App() {
   const completed = plan.items.filter((item) => log.checks?.[item]).length
   const pct = Math.round((completed / plan.items.length) * 100)
 
-  const props = { day, plan, log, targets, updateLog, pct, completed, state }
+  const props = { day, plan, log, targets, updateLog, pct, completed, state, programTemplate, activeWeekName, setState }
 
   return (
     <div className="app">
@@ -147,7 +157,7 @@ function App() {
         {tab === 'Nutrition' && <NutritionPage {...props} />}
         {tab === 'Throwing' && <ThrowingPage {...props} />}
         {tab === 'Recovery' && <RecoveryPage {...props} />}
-        {tab === 'Plan' && <PlanPage day={day} weeklyPlan={weeklyPlan} updateWeekPlan={updateWeekPlan} />}
+        {tab === 'Plan' && <PlanPage day={day} weeklyPlan={weeklyPlan} updateWeekPlan={updateWeekPlan} programTemplate={programTemplate} activeWeekName={activeWeekName} setState={setState} />}
         {tab === 'Review' && <ReviewPage state={state} />}
       </main>
       <nav className="nav">
@@ -179,6 +189,9 @@ interface BasePageProps {
   pct: number
   completed: number
   state?: AppState
+  programTemplate?: ProgramTemplate
+  activeWeekName?: string
+  setState?: Dispatch<SetStateAction<AppState>>
 }
 
 function HomePage({ day, plan, log, targets, updateLog, pct, completed }: BasePageProps) {
@@ -211,14 +224,16 @@ function HomePage({ day, plan, log, targets, updateLog, pct, completed }: BasePa
   )
 }
 
-function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
-  const workoutSession = log.workoutSession || createWorkoutSession(plan.items, state || {})
+function WorkoutPage({ plan, log, updateLog, pct, state, programTemplate, activeWeekName }: BasePageProps) {
+  const snapshot = programTemplate && activeWeekName ? getProgramSnapshot(state || {}, programTemplate, new Date(), activeWeekName) : null
+  const templateExercises = snapshot?.activeDay?.exercises || plan.items
+  const workoutSession = log.workoutSession || createWorkoutSession(templateExercises, state || {})
 
   useEffect(() => {
     if (!log.workoutSession && plan.items.length) {
-      updateLog({ workoutSession })
+      updateLog({ workoutSession: { ...workoutSession, exercises: workoutSession.exercises.map((exercise, index) => ({ ...exercise, name: templateExercises[index] || exercise.name })) } })
     }
-  }, [log.workoutSession, plan.items, updateLog, workoutSession])
+  }, [log.workoutSession, plan.items, updateLog, workoutSession, templateExercises])
 
   useEffect(() => {
     if (workoutSession.phase !== 'rest' || workoutSession.restSecondsLeft <= 0) {
@@ -340,7 +355,7 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
           durationMinutes="Add time at the end"
           completedExercises={workoutSession.exercises.filter((exercise) => exercise.completed).length}
           completedSets={workoutSession.exercises.reduce((total, exercise) => total + exercise.completedSets, 0)}
-          onRestart={() => updateLog({ workoutSession: createWorkoutSession(plan.items, state || {}) })}
+          onRestart={() => updateLog({ workoutSession: createWorkoutSession(templateExercises, state || {}) })}
         />
       </div>
     )
@@ -361,7 +376,7 @@ function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
             <span className="subtle">Progress</span>
             <strong>{progress}%</strong>
           </div>
-          <button className="coach-secondary" onClick={() => updateLog({ workoutSession: createWorkoutSession(plan.items, state || {}) })}>
+          <button className="coach-secondary" onClick={() => updateLog({ workoutSession: createWorkoutSession(templateExercises, state || {}) })}>
             Reset exercises
           </button>
         </div>
@@ -641,7 +656,7 @@ interface PlanPageProps {
   updateWeekPlan: (dayName: string, value: string) => void
 }
 
-function PlanPage({ day, weeklyPlan, updateWeekPlan }: PlanPageProps) {
+function PlanPage({ day, weeklyPlan, updateWeekPlan, programTemplate, activeWeekName, setState }: BasePageProps & PlanPageProps) {
   return (
     <div className="stack">
       <Card>
@@ -653,6 +668,18 @@ function PlanPage({ day, weeklyPlan, updateWeekPlan }: PlanPageProps) {
           <Activity />
         </div>
         <p className="muted">Edit the lifts for each day and use this as your offseason planning board.</p>
+      </Card>
+      <Card>
+        <div className="section-title">
+          <h3>Program settings</h3>
+          <span className="subtle">{programTemplate?.phase || 'Summer Phase 2'}</span>
+        </div>
+        <label className="coach-field">
+          <span>Active week</span>
+          <select value={activeWeekName || PROGRAM_WEEKS[0]} onChange={(event) => setState?.((prev) => ({ ...prev, activeWeek: event.target.value }))}>
+            {PROGRAM_WEEKS.map((week) => <option key={week} value={week}>{week}</option>)}
+          </select>
+        </label>
       </Card>
       <Card>
         <div className="plan-grid">
