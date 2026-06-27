@@ -47,7 +47,7 @@ const planDefaults = {
   Thursday: [defaultWeeklyPlan.Thursday, throwingPlan.join('\n')].filter(Boolean).join('\n\nThrowing:\n')
 } as WeeklyPlanMap
 
-type TabName = 'Home' | 'Workout' | 'Nutrition' | 'Throwing' | 'Recovery' | 'Plan' | 'Review'
+type TabName = 'Home' | 'Workout' | 'Nutrition' | 'Throwing' | 'Recovery' | 'Plan' | 'History'
 
 function getPreviousValue(exerciseName: string, state: AppState) {
   const entries = Object.entries(state)
@@ -153,7 +153,7 @@ function App() {
         {tab === 'Throwing' && <ThrowingPage {...props} />}
         {tab === 'Recovery' && <RecoveryPage {...props} />}
         {tab === 'Plan' && <PlanPage day={day} weeklyPlan={weeklyPlan} updateWeekPlan={updateWeekPlan} programTemplate={programTemplate} activeWeekName={activeWeekName} setState={setState} />}
-        {tab === 'Review' && <ReviewPage state={state} />}
+        {tab === 'History' && <HistoryPage state={state} />}
       </main>
       <nav className="nav">
         {[
@@ -163,7 +163,7 @@ function App() {
           ['Throwing', Zap],
           ['Recovery', HeartPulse],
           ['Plan', Activity],
-          ['Review', BarChart3]
+          ['History', BarChart3]
         ].map(([name, Icon]) => (
           <button key={name} onClick={() => setTab(name as TabName)} className={tab === name ? 'active' : ''}>
             <Icon size={20} />
@@ -713,75 +713,187 @@ function PlanPage({ day, weeklyPlan, updateWeekPlan, programTemplate, activeWeek
   )
 }
 
-interface ReviewPageProps {
+interface HistoryPageProps {
   state: AppState
 }
 
-function ReviewPage({ state }: ReviewPageProps) {
-  const entries = Object.entries(state).filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key)).sort().slice(-7)
-  const summary = useMemo(() => {
-    if (entries.length === 0) return null
+function getHistoryStatus(log: DailyLog | undefined) {
+  const normalized = normalizeLog(log)
+  const workoutCompleted = normalized.workoutSession?.phase === 'finished'
+  const nutritionComplete = Boolean(normalized.macros?.protein || normalized.macros?.carbs || normalized.macros?.fat || normalized.macros?.water)
+  const recoveryComplete = Boolean(normalized.recovery?.sleep || normalized.recovery?.weight || normalized.recovery?.whoop || (normalized.recovery?.soreness && normalized.recovery.soreness !== 3))
+  const throwingComplete = Object.keys(normalized.checks || {}).some((key) => key.startsWith('Throwing:') && normalized.checks?.[key])
+  const notesComplete = Boolean(normalized.notes?.trim())
 
-    return entries.map(([date, log]) => {
-      const dayName = DAYS[new Date(`${date}T00:00:00`).getDay()]
-      const plan = weekPlan[dayName]
-      const total = plan?.items?.length || 1
-      const completed = Object.values(log?.checks || {}).filter(Boolean).length
-      const pct = Math.round((completed / total) * 100)
+  const completedCount = [workoutCompleted, nutritionComplete, recoveryComplete, throwingComplete, notesComplete].filter(Boolean).length
 
-      return {
-        date,
-        dayName,
-        pct,
-        lifts: Array.isArray(log?.lifts) ? log.lifts : [],
-        protein: log?.macros?.protein || 0,
-        soreness: Number(log?.recovery?.soreness || 0)
-      }
-    })
-  }, [entries])
-
-  if (!summary) {
-    return (
-      <div className="stack">
-        <Card>
-          <h2>Weekly Review</h2>
-          <p className="muted">Log a few days to see what to keep, change, or progress.</p>
-        </Card>
-      </div>
-    )
+  if (workoutCompleted && completedCount >= 5) {
+    return { label: 'Complete', tone: 'complete', completedCount }
   }
+
+  if (workoutCompleted && completedCount >= 2) {
+    return { label: 'Partial', tone: 'partial', completedCount }
+  }
+
+  if (workoutCompleted) {
+    return { label: 'Workout only', tone: 'partial', completedCount }
+  }
+
+  if (completedCount > 0) {
+    return { label: 'Logged', tone: 'planned', completedCount }
+  }
+
+  return { label: 'Open', tone: 'empty', completedCount }
+}
+
+function getWorkoutDuration(log: DailyLog | undefined) {
+  const startedAt = log?.workoutSession?.startedAt
+  const completedAt = log?.workoutSession?.completedAt
+
+  if (!startedAt) {
+    return '—'
+  }
+
+  if (!completedAt) {
+    return 'In progress'
+  }
+
+  const durationMinutes = Math.max(0, Math.round((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 60000))
+  return `${durationMinutes} min`
+}
+
+function HistoryPage({ state }: HistoryPageProps) {
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [displayMonth, setDisplayMonth] = useState(() => new Date())
+
+  const entries = useMemo(() => Object.entries(state).filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key)).sort(), [state])
+
+  useEffect(() => {
+    if (!selectedDate && entries.length > 0) {
+      setSelectedDate(entries[entries.length - 1][0])
+    }
+  }, [entries, selectedDate])
+
+  const monthLabel = displayMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const year = displayMonth.getFullYear()
+  const month = displayMonth.getMonth()
+  const firstDayOfMonth = new Date(year, month, 1)
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const startOffset = firstDayOfMonth.getDay()
+
+  const calendarDays = useMemo(() => {
+    const cells = [] as Array<{ dateString: string | null; dayNumber: number | null; status: ReturnType<typeof getHistoryStatus>; log: DailyLog | undefined }>
+
+    for (let index = 0; index < startOffset; index += 1) {
+      cells.push({ dateString: null, dayNumber: null, status: { label: 'Open', tone: 'empty', completedCount: 0 }, log: undefined })
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const dateString = new Date(year, month, day).toISOString().slice(0, 10)
+      const log = state[dateString]
+      cells.push({ dateString, dayNumber: day, status: getHistoryStatus(log), log })
+    }
+
+    return cells
+  }, [daysInMonth, month, startOffset, state, year])
+
+  const selectedLog = selectedDate ? normalizeLog(state[selectedDate]) : null
+  const selectedStatus = selectedDate ? getHistoryStatus(state[selectedDate]) : null
+  const selectedDayName = selectedDate ? DAYS[new Date(`${selectedDate}T00:00:00`).getDay()] : ''
 
   return (
     <div className="stack">
       <Card>
-        <h2>Weekly Review</h2>
-        <p className="muted">Use this section to decide what to adjust before the next week starts.</p>
-      </Card>
-      {summary.map(({ date, dayName, pct, lifts, protein, soreness }) => (
-        <Card key={date}>
-          <div className="row">
-            <div>
-              <b>{date}</b>
-              <p className="muted">{dayName}</p>
-            </div>
-            <span>{pct}% complete</span>
+        <div className="row">
+          <div>
+            <p className="eyebrow">History</p>
+            <h2>Training calendar</h2>
           </div>
-          {lifts.length === 0 ? (
-            <p className="muted">No lifts logged.</p>
-          ) : (
-            <ul className="review-list">
-              {lifts.map((lift, index) => (
-                <li key={`${date}-${index}`}>
-                  <b>{lift.exercise || 'Untitled lift'}</b>
-                  <span>{lift.sets || 0}x{lift.reps || 0} @ {lift.weight || '--'}</span>
-                  <p>{lift.notes || 'No notes'}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="muted">Protein: {protein}g · Soreness: {soreness}/10</p>
-        </Card>
-      ))}
+          <div className="history-month-nav">
+            <button className="text-button" onClick={() => setDisplayMonth(new Date(year, month - 1, 1))}>←</button>
+            <span className="subtle">{monthLabel}</span>
+            <button className="text-button" onClick={() => setDisplayMonth(new Date(year, month + 1, 1))}>→</button>
+          </div>
+        </div>
+        <p className="muted">Every completed workout is saved by date and surfaced here for a quick review.</p>
+      </Card>
+
+      <Card>
+        <div className="history-grid">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => (
+            <span key={label} className="history-weekday">{label}</span>
+          ))}
+          {calendarDays.map((cell, index) => (
+            <button
+              key={cell.dateString || `empty-${index}`}
+              className={`history-day ${cell.dateString ? cell.status.tone : 'empty'} ${selectedDate === cell.dateString ? 'active' : ''}`}
+              onClick={() => cell.dateString && setSelectedDate(cell.dateString)}
+              disabled={!cell.dateString}
+            >
+              <strong>{cell.dayNumber ?? ''}</strong>
+              <span>{cell.dateString ? cell.status.label : ''}</span>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="section-title">
+          <h3>{selectedDate ? `${selectedDayName} · ${selectedDate}` : 'Select a day'}</h3>
+          <span className="subtle">{selectedStatus?.label || 'Open'}</span>
+        </div>
+        {!selectedDate || !selectedLog ? (
+          <p className="muted">Pick a day from the calendar to inspect the full log.</p>
+        ) : (
+          <div className="history-detail-stack">
+            <div className="history-detail-grid">
+              <div className="history-detail-item">
+                <span>Workout completed</span>
+                <strong>{selectedLog.workoutSession?.phase === 'finished' ? 'Completed' : 'Pending'}</strong>
+              </div>
+              <div className="history-detail-item">
+                <span>Workout duration</span>
+                <strong>{getWorkoutDuration(selectedLog)}</strong>
+              </div>
+              <div className="history-detail-item">
+                <span>Nutrition</span>
+                <strong>{selectedLog.macros && (selectedLog.macros.protein || selectedLog.macros.carbs || selectedLog.macros.fat || selectedLog.macros.water) ? 'Logged' : 'Not logged'}</strong>
+              </div>
+              <div className="history-detail-item">
+                <span>Recovery</span>
+                <strong>{selectedLog.recovery?.sleep || selectedLog.recovery?.weight || selectedLog.recovery?.whoop ? 'Logged' : 'Not logged'}</strong>
+              </div>
+              <div className="history-detail-item">
+                <span>Throwing</span>
+                <strong>{Object.keys(selectedLog.checks || {}).some((key) => key.startsWith('Throwing:') && selectedLog.checks?.[key]) ? 'Logged' : 'Not logged'}</strong>
+              </div>
+              <div className="history-detail-item">
+                <span>Notes</span>
+                <strong>{selectedLog.notes?.trim() ? 'Added' : 'None'}</strong>
+              </div>
+            </div>
+
+            <div className="history-meta-list">
+              <div>
+                <span className="subtle">Nutrition</span>
+                <p>{selectedLog.macros?.protein ?? 0}g protein · {selectedLog.macros?.carbs ?? 0}g carbs · {selectedLog.macros?.fat ?? 0}g fat</p>
+              </div>
+              <div>
+                <span className="subtle">Recovery</span>
+                <p>Sleep {selectedLog.recovery?.sleep || '—'} · Weight {selectedLog.recovery?.weight || '—'} · WHOOP {selectedLog.recovery?.whoop || '—'}</p>
+              </div>
+              <div>
+                <span className="subtle">Throwing</span>
+                <p>{Object.keys(selectedLog.checks || {}).filter((key) => key.startsWith('Throwing:') && selectedLog.checks?.[key]).map((key) => key.replace('Throwing: ', '')).join(', ') || 'No throwing items marked'}</p>
+              </div>
+              <div>
+                <span className="subtle">Notes</span>
+                <p>{selectedLog.notes?.trim() || 'No notes recorded.'}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
   )
 }
