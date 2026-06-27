@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   Apple,
@@ -19,8 +19,10 @@ import { ProgressBar } from './components/ui/ProgressBar'
 import { ChecklistRow } from './components/ChecklistRow'
 import { usePersistentState } from './hooks/usePersistentState'
 import { weekPlan, macroTargets } from './data/program'
-import { buildPlan, createPlanItems, DAYS, getTodayId, getTodayName, normalizeLog } from './utils/plan'
-import type { AppState, DailyLog, LiftEntry, MacroTargets, PlanDay, WeeklyPlanMap } from './types'
+import { buildPlan, DAYS, getTodayId, getTodayName, normalizeLog } from './utils/plan'
+import type { AppState, DailyLog, LiftEntry, MacroTargets, PlanDay, WeeklyPlanMap, WorkoutExerciseState, WorkoutSessionState } from './types'
+import { CoachExerciseCard } from './components/workout/CoachExerciseCard'
+import { WorkoutFinishScreen } from './components/workout/WorkoutFinishScreen'
 
 const throwingPlan = [
   'Catch',
@@ -45,6 +47,59 @@ const planDefaults = {
 } as WeeklyPlanMap
 
 type TabName = 'Home' | 'Workout' | 'Nutrition' | 'Throwing' | 'Recovery' | 'Plan' | 'Review'
+
+function getPreviousValue(exerciseName: string, state: AppState) {
+  const entries = Object.entries(state)
+    .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key))
+    .sort()
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const [, log] = entries[index]
+    const previousWorkout = log?.workoutSession?.exercises?.find((exercise) => exercise.name === exerciseName)
+    if (previousWorkout?.targetWeight) {
+      return previousWorkout.targetWeight
+    }
+
+    if (log?.weights?.[exerciseName]) {
+      return log.weights[exerciseName]
+    }
+  }
+
+  return ''
+}
+
+function createWorkoutSession(planItems: string[], state: AppState): WorkoutSessionState {
+  return {
+    startedAt: new Date().toISOString(),
+    activeExerciseIndex: 0,
+    phase: 'active',
+    restSecondsLeft: 0,
+    exercises: planItems.map((item) => ({
+      name: item,
+      sets: 3,
+      reps: '5',
+      previousValue: getPreviousValue(item, state),
+      targetWeight: '',
+      notes: '',
+      completedSets: 0,
+      completed: false
+    }))
+  }
+}
+
+function getWorkoutProgress(session: WorkoutSessionState) {
+  const completedExercises = session.exercises.filter((exercise) => exercise.completed).length
+  const currentExercise = session.exercises[session.activeExerciseIndex]
+  const currentFraction = currentExercise ? currentExercise.completedSets / Math.max(currentExercise.sets, 1) : 0
+  const total = session.exercises.length
+  return Math.min(100, Math.round(((completedExercises + currentFraction) / Math.max(total, 1)) * 100))
+}
+
+function formatDuration(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
 
 function App() {
   const [tab, setTab] = useState<TabName>('Home')
@@ -75,7 +130,7 @@ function App() {
   const completed = plan.items.filter((item) => log.checks?.[item]).length
   const pct = Math.round((completed / plan.items.length) * 100)
 
-  const props = { day, plan, log, targets, updateLog, pct, completed }
+  const props = { day, plan, log, targets, updateLog, pct, completed, state }
 
   return (
     <div className="app">
@@ -123,6 +178,7 @@ interface BasePageProps {
   updateLog: (patch: Partial<DailyLog>) => void
   pct: number
   completed: number
+  state?: AppState
 }
 
 function HomePage({ day, plan, log, targets, updateLog, pct, completed }: BasePageProps) {
@@ -155,9 +211,136 @@ function HomePage({ day, plan, log, targets, updateLog, pct, completed }: BasePa
   )
 }
 
-function WorkoutPage({ plan, log, updateLog, pct }: BasePageProps) {
-  const addLift = () => {
-    updateLog({ lifts: [...(log.lifts || []), { exercise: '', sets: '3', reps: '5', weight: '', notes: '' }] })
+function WorkoutPage({ plan, log, updateLog, pct, state }: BasePageProps) {
+  const [tick, setTick] = useState(0)
+  const workoutSession = log.workoutSession || createWorkoutSession(plan.items, state || {})
+
+  useEffect(() => {
+    if (!log.workoutSession && plan.items.length) {
+      updateLog({ workoutSession })
+    }
+  }, [log.workoutSession, plan.items, updateLog, workoutSession])
+
+  useEffect(() => {
+    if (workoutSession.phase === 'finished' || workoutSession.phase === 'rest') {
+      return undefined
+    }
+
+    const timer = window.setInterval(() => setTick((value) => value + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [workoutSession.phase])
+
+  useEffect(() => {
+    if (workoutSession.phase !== 'rest' || workoutSession.restSecondsLeft <= 0) {
+      return undefined
+    }
+
+    const timer = window.setTimeout(() => {
+      const nextSession = {
+        ...workoutSession,
+        restSecondsLeft: workoutSession.restSecondsLeft - 1,
+        phase: workoutSession.restSecondsLeft - 1 <= 0 ? 'active' : 'rest'
+      }
+
+      updateLog({ workoutSession: nextSession })
+    }, 1000)
+
+    return () => window.clearTimeout(timer)
+  }, [updateLog, workoutSession])
+
+  const activeExercise = workoutSession.exercises[workoutSession.activeExerciseIndex]
+  const workoutDuration = Math.max(0, Math.round((Date.now() - Date.parse(workoutSession.startedAt)) / 1000))
+  const progress = getWorkoutProgress(workoutSession)
+
+  const updateWorkoutSession = (updater: (session: WorkoutSessionState) => WorkoutSessionState) => {
+    const nextSession = updater(workoutSession)
+    updateLog({ workoutSession: nextSession })
+  }
+
+  const handleCompleteSet = () => {
+    if (!activeExercise || workoutSession.phase !== 'active') {
+      return
+    }
+
+    updateWorkoutSession((session) => {
+      const nextExercises = session.exercises.map((exercise, index) => {
+        if (index !== session.activeExerciseIndex) {
+          return exercise
+        }
+
+        const nextCompletedSets = exercise.completedSets + 1
+        return {
+          ...exercise,
+          completedSets: nextCompletedSets,
+          completed: nextCompletedSets >= exercise.sets
+        }
+      })
+
+      return {
+        ...session,
+        exercises: nextExercises,
+        phase: 'rest',
+        restSecondsLeft: 45
+      }
+    })
+  }
+
+  const handleNextExercise = () => {
+    if (!activeExercise || !activeExercise.completed) {
+      return
+    }
+
+    updateWorkoutSession((session) => {
+      const nextIndex = session.activeExerciseIndex + 1
+      if (nextIndex >= session.exercises.length) {
+        return {
+          ...session,
+          phase: 'finished',
+          completedAt: new Date().toISOString()
+        }
+      }
+
+      return {
+        ...session,
+        activeExerciseIndex: nextIndex,
+        phase: 'active',
+        restSecondsLeft: 0
+      }
+    })
+  }
+
+  const updateExerciseField = (field: 'targetWeight' | 'notes', value: string) => {
+    if (!activeExercise) {
+      return
+    }
+
+    updateWorkoutSession((session) => ({
+      ...session,
+      exercises: session.exercises.map((exercise, index) => (index === session.activeExerciseIndex ? { ...exercise, [field]: value } : exercise))
+    }))
+  }
+
+  if (workoutSession.phase === 'finished') {
+    return (
+      <div className="stack">
+        <Card>
+          <div className="row">
+            <div>
+              <p className="eyebrow">Coach Mode</p>
+              <h2>{plan.focus}</h2>
+            </div>
+            <Timer />
+          </div>
+          <ProgressBar value={100} />
+        </Card>
+        <WorkoutFinishScreen
+          durationMinutes={formatDuration(workoutDuration)}
+          completedExercises={workoutSession.exercises.filter((exercise) => exercise.completed).length}
+          completedSets={workoutSession.exercises.reduce((total, exercise) => total + exercise.completedSets, 0)}
+          onRestart={() => updateLog({ workoutSession: createWorkoutSession(plan.items, state || {}) })}
+        />
+      </div>
+    )
   }
 
   return (
@@ -170,27 +353,49 @@ function WorkoutPage({ plan, log, updateLog, pct }: BasePageProps) {
           </div>
           <Timer />
         </div>
-        <ProgressBar value={pct} />
-      </Card>
-      <Card>
-        {plan.items.map((item) => (
-          <WorkoutRow key={item} item={item} log={log} updateLog={updateLog} />
-        ))}
-      </Card>
-      <Card>
-        <div className="row">
-          <h3>Lift log</h3>
-          <button className="secondary-action" onClick={addLift}>+ Add lift</button>
+        <div className="workout-meta-row">
+          <div>
+            <span className="subtle">Workout timer</span>
+            <strong>{formatDuration(workoutDuration)}</strong>
+          </div>
+          <div>
+            <span className="subtle">Progress</span>
+            <strong>{progress}%</strong>
+          </div>
         </div>
-        {log.lifts?.length ? (
-          log.lifts.map((lift, index) => (
-            <LiftRow key={`${index}-${lift.exercise || 'new'}`} lift={lift} index={index} log={log} updateLog={updateLog} />
-          ))
-        ) : (
-          <p className="muted">Add the lifts you completed today.</p>
-        )}
+        <ProgressBar value={progress} />
       </Card>
-      <Notes log={log} updateLog={updateLog} />
+
+      {activeExercise ? (
+        <CoachExerciseCard
+          exerciseName={activeExercise.name}
+          completeSets={activeExercise.completedSets}
+          targetSets={activeExercise.sets}
+          targetReps={activeExercise.reps}
+          previousValue={activeExercise.previousValue}
+          targetWeight={activeExercise.targetWeight}
+          notes={activeExercise.notes}
+          isComplete={activeExercise.completed}
+          onTargetWeightChange={(value) => updateExerciseField('targetWeight', value)}
+          onNotesChange={(value) => updateExerciseField('notes', value)}
+          onCompleteSet={handleCompleteSet}
+          onNextExercise={handleNextExercise}
+          restSecondsLeft={workoutSession.restSecondsLeft}
+          status={workoutSession.phase}
+        />
+      ) : null}
+
+      <Card>
+        <h3>Workout plan</h3>
+        <ul className="coach-list">
+          {workoutSession.exercises.map((exercise, index) => (
+            <li key={exercise.name} className={index === workoutSession.activeExerciseIndex ? 'active' : ''}>
+              <span>{exercise.name}</span>
+              <small>{exercise.completed ? 'Done' : `${exercise.completedSets}/${exercise.sets} sets`}</small>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </div>
   )
 }

@@ -17,7 +17,8 @@ export function normalizeLog(logData: DailyLog = {}): DailyLog {
     recovery: { sleep: '', weight: '', whoop: '', soreness: 3, ...(logData.recovery || {}) },
     notes: logData.notes || '',
     weights: logData.weights || {},
-    lifts: Array.isArray(logData.lifts) ? logData.lifts : []
+    lifts: Array.isArray(logData.lifts) ? logData.lifts : [],
+    workoutSession: logData.workoutSession
   }
 }
 

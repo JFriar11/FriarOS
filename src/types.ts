@@ -29,6 +29,26 @@ export interface LiftEntry {
   notes: string
 }
 
+export interface WorkoutExerciseState {
+  name: string
+  sets: number
+  reps: string
+  previousValue: string
+  targetWeight: string
+  notes: string
+  completedSets: number
+  completed: boolean
+}
+
+export interface WorkoutSessionState {
+  startedAt: string
+  completedAt?: string
+  activeExerciseIndex: number
+  phase: 'active' | 'rest' | 'finished'
+  restSecondsLeft: number
+  exercises: WorkoutExerciseState[]
+}
+
 export interface DailyLog {
   checks?: Record<string, boolean>
   macros?: Partial<MacroLog>
@@ -36,6 +56,7 @@ export interface DailyLog {
   notes?: string
   weights?: Record<string, string>
   lifts?: LiftEntry[]
+  workoutSession?: WorkoutSessionState
 }
 
 export interface PlanDay {
