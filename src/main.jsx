@@ -79,8 +79,8 @@ function CheckRow({item, log, updateLog}) {
   return <button className="checkrow" onClick={()=> updateLog({ checks: { ...log.checks, [item]: !checked }}) }><CheckCircle2 className={checked?'done':''}/><span>{item}</span></button>
 }
 function WorkoutPage({ plan, log, updateLog, pct }) {
-  const addLift = () => updateLog({ lifts: [...(log.lifts || []), { exercise: '', sets: '', reps: '', weight: '', notes: '' }] })
-  return <div className="stack"><Card><div className="row"><div><p className="eyebrow">Coach Mode</p><h2>{plan.focus}</h2></div><Timer/></div><Progress value={pct}/></Card><Card>{plan.items.map(item => <WorkoutRow key={item} item={item} log={log} updateLog={updateLog}/>)}</Card><Card><div className="row"><h3>Lift log</h3><button className="secondary-action" onClick={addLift}>+ Add lift</button></div>{log.lifts?.length ? log.lifts.map((lift, index) => <LiftRow key={`${index}-${lift.exercise}`} lift={lift} index={index} log={log} updateLog={updateLog}/>) : <p className="muted">Add the lifts you completed today.</p>}</Card><Notes log={log} updateLog={updateLog}/></div>
+  const addLift = () => updateLog({ lifts: [...(log.lifts || []), { exercise: '', sets: '3', reps: '5', weight: '', notes: '' }] })
+  return <div className="stack"><Card><div className="row"><div><p className="eyebrow">Coach Mode</p><h2>{plan.focus}</h2></div><Timer/></div><Progress value={pct}/></Card><Card>{plan.items.map(item => <WorkoutRow key={item} item={item} log={log} updateLog={updateLog}/>)}</Card><Card><div className="row"><h3>Lift log</h3><button className="secondary-action" onClick={addLift}>+ Add lift</button></div>{log.lifts?.length ? log.lifts.map((lift, index) => <LiftRow key={`${index}-${lift.exercise || 'new'}`} lift={lift} index={index} log={log} updateLog={updateLog}/>) : <p className="muted">Add the lifts you completed today.</p>}</Card><Notes log={log} updateLog={updateLog}/></div>
 }
 function WorkoutRow({ item, log, updateLog }) {
   const checked = !!log.checks?.[item]
